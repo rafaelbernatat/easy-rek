@@ -1,0 +1,9 @@
+{
+  "name": "Tella-like Recorder",
+  "description": "A premium screen and camera recorder that captures separate tracks for easy post-production.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "display-capture"
+  ]
+}
