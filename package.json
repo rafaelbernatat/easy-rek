@@ -14,7 +14,9 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.712.0",
     "@aws-sdk/s3-request-presigner": "^3.712.0",
+    "@clerk/nextjs": "^6.37.1",
     "@neondatabase/serverless": "^1.0.2",
+    "@stripe/stripe-js": "^8.7.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "drizzle-orm": "^0.45.1",
@@ -23,6 +25,7 @@
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "stripe": "^20.3.0",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

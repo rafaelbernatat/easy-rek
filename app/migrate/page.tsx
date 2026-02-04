@@ -1,16 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { migrateThumbnailKey } from "../actions/migrate";
+import { migrateThumbnailKey, migratePlaylists } from "../actions/migrate";
 
 export default function MigratePage() {
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<any>(null);
 
-  const runMigration = async () => {
+  const runThumbnailMigration = async () => {
     setIsRunning(true);
     setResult(null);
     const res = await migrateThumbnailKey();
+    setResult(res);
+    setIsRunning(false);
+  };
+
+  const runPlaylistsMigration = async () => {
+    setIsRunning(true);
+    setResult(null);
+    const res = await migratePlaylists();
     setResult(res);
     setIsRunning(false);
   };
@@ -20,18 +28,38 @@ export default function MigratePage() {
       <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
         <h1 className="text-2xl font-bold mb-4">Migração de Banco de Dados</h1>
         <p className="text-gray-600 mb-6">
-          Esta migração adiciona a coluna{" "}
-          <code className="bg-gray-100 px-2 py-1 rounded">thumbnail_key</code>
-          na tabela recordings e atualiza os registros existentes.
+           Esta página permite executar migrações do banco de dados.
         </p>
 
-        <button
-          onClick={runMigration}
-          disabled={isRunning}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
-        >
-          {isRunning ? "Executando migração..." : "Executar Migração"}
-        </button>
+        <div className="space-y-4">
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h2 className="text-lg font-semibold mb-2">1. Adicionar coluna thumbnail_key</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Adiciona a coluna thumbnail_key na tabela recordings e atualiza os registros existentes.
+            </p>
+            <button
+              onClick={runThumbnailMigration}
+              disabled={isRunning}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            >
+              {isRunning ? "Executando..." : "Executar Migração"}
+            </button>
+          </div>
+
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h2 className="text-lg font-semibold mb-2">2. Criar tabelas de playlists</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Cria as tabelas playlists e playlist_items com índices para melhor performance.
+            </p>
+            <button
+              onClick={runPlaylistsMigration}
+              disabled={isRunning}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            >
+              {isRunning ? "Executando..." : "Executar Migração"}
+            </button>
+          </div>
+        </div>
 
         {result && (
           <div

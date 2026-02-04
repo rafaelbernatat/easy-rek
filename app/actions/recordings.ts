@@ -149,7 +149,7 @@ export async function getRecordingsAction() {
         const screenUrl = rec.screen_key
           ? `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${rec.screen_key}`
           : null;
-
+        
         return {
           id: rec.id,
           userId: rec.user_id,
@@ -165,6 +165,7 @@ export async function getRecordingsAction() {
           size: Number(rec.size),
           editConfig: rec.edit_config,
           createdAt: new Date(rec.created_at).toISOString(),
+          updatedAt: rec.updated_at ? new Date(rec.updated_at).toISOString() : undefined,
         };
       }),
     };
@@ -300,6 +301,92 @@ export async function deleteRecordingAction(id: string) {
     return {
       success: false,
       error: "Failed to delete recording",
+    };
+  }
+}
+
+/**
+ * Update recording title
+ */
+export async function updateTitleAction(recordingId: string, title: string) {
+  console.log("✏️ [UPDATE TITLE] Iniciando atualização...");
+  console.log("✏️ [UPDATE TITLE] RecordingId:", recordingId);
+  console.log("✏️ [UPDATE TITLE] Novo título:", title);
+
+  try {
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) throw new Error("DATABASE_URL not set");
+
+    const sql = neon(dbUrl);
+
+    const result = await sql`
+      UPDATE recordings
+      SET title = ${title}, updated_at = NOW()
+      WHERE id = ${recordingId} AND user_id = ${DEMO_USER_ID}
+      RETURNING id, title, updated_at
+    `;
+
+    console.log("✏️ [UPDATE TITLE] ✅ Título atualizado com sucesso!");
+    console.log("✏️ [UPDATE TITLE] Linhas afetadas:", result.length);
+
+    return {
+      success: true,
+      recording: result[0],
+    };
+  } catch (error) {
+    console.error("✏️ [UPDATE TITLE] ❌ ERRO:", error);
+    return {
+      success: false,
+      error: "Failed to update title",
+    };
+  }
+}
+
+/**
+ * Get recording by ID
+ */
+export async function getRecordingByIdAction(recordingId: string) {
+  try {
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) throw new Error("DATABASE_URL not set");
+
+    const sql = neon(dbUrl);
+
+    const recordings = await sql`
+      SELECT * FROM recordings WHERE id = ${recordingId}
+    `;
+
+    if (recordings.length === 0) {
+      return {
+        success: false,
+        error: "Recording not found",
+      };
+    }
+
+    const rec = recordings[0];
+
+    return {
+      success: true,
+      recording: {
+        id: rec.id,
+        userId: rec.user_id,
+        title: rec.title,
+        videoKey: rec.video_key,
+        cameraKey: rec.camera_key,
+        screenKey: rec.screen_key,
+        thumbnailUrl: rec.thumbnail_url,
+        duration: rec.duration,
+        size: Number(rec.size),
+        editConfig: rec.edit_config,
+        createdAt: new Date(rec.created_at).toISOString(),
+        updatedAt: rec.updated_at ? new Date(rec.updated_at).toISOString() : undefined,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching recording:", error);
+    return {
+      success: false,
+      error: "Failed to fetch recording",
     };
   }
 }

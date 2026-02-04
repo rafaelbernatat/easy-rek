@@ -12,13 +12,22 @@ import {
   Copy,
   Edit2,
   ListPlus,
+  Pencil,
+  Loader2,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   getRecordingsAction,
   deleteRecordingAction,
+  updateTitleAction,
 } from "@/app/actions/recordings";
+import { UserButton } from "@/components/shared/UserButton";
+import UploadModal from "@/components/home/UploadModal";
+import PlaylistModal from "@/components/home/PlaylistModal";
+import PlaylistSidebar from "@/components/home/PlaylistSidebar";
+import PlaylistItems from "@/components/home/PlaylistItems";
 
 interface Recording {
   id: string;
@@ -29,15 +38,25 @@ interface Recording {
   duration: number;
   size: number;
   createdAt: string;
+  updatedAt?: string;
 }
 
-export function HomePage() {
+export default function HomePage() {
   const router = useRouter();
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredVideo, setHoveredVideo] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
+  const [playlistModalMode, setPlaylistModalMode] = useState<"add" | "create">("add");
+  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [playlistRefreshTrigger, setPlaylistRefreshTrigger] = useState(0);
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
+  const [editTitleValue, setEditTitleValue] = useState("");
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
   const videoRefs = useRef<{ [key: string]: HTMLVideoElement | null }>({});
 
   // Load recordings from database
@@ -79,6 +98,51 @@ export function HomePage() {
     if (newTitle && newTitle !== currentTitle) {
       // TODO: Implement rename functionality
       alert("Rename functionality coming soon!");
+    }
+  };
+
+  const handleTitleEditStart = (id: string, currentTitle: string) => {
+    setEditingTitleId(id);
+    setEditTitleValue(currentTitle);
+  };
+
+  const handleTitleSave = async (id: string) => {
+    if (!editTitleValue.trim()) {
+      // Don't save empty titles
+      setEditingTitleId(null);
+      return;
+    }
+
+    setIsSavingTitle(true);
+    // Call the actual server action to update title
+    const result = await updateTitleAction(id, editTitleValue);
+
+    if (result.success) {
+      // Update local state
+      setRecordings((prev) =>
+        prev.map((rec) =>
+          rec.id === id ? { ...rec, title: editTitleValue } : rec
+        )
+      );
+    } else {
+      alert(result.error || "Failed to update title");
+    }
+
+    setIsSavingTitle(false);
+    setEditingTitleId(null);
+  };
+
+  const handleTitleCancel = () => {
+    setEditingTitleId(null);
+    setEditTitleValue("");
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleTitleSave(id);
+    } else if (e.key === "Escape") {
+      handleTitleCancel();
     }
   };
 
@@ -143,6 +207,24 @@ export function HomePage() {
     return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
   };
 
+  // Format timestamp to relative time string
+  const formatRelativeTime = (timestamp?: string | null) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60)
+      return `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
+    if (diffHours < 24)
+      return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
+    return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
+  };
+
   // Get video URL from R2 (only for preview - not critical)
   const getVideoUrl = (videoKey: string) => {
     const publicUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
@@ -160,7 +242,7 @@ export function HomePage() {
     title: rec.title,
     duration: formatDuration(rec.duration),
     videoUrl: getVideoUrl(rec.videoKey),
-    edited: getRelativeTime(rec.createdAt),
+    edited: formatRelativeTime(rec.updatedAt || rec.createdAt),
     recording: rec,
   }));
 
@@ -200,11 +282,14 @@ export function HomePage() {
     <div className="flex h-screen bg-white">
       {/* Sidebar */}
       <aside className="w-64 border-r border-gray-200 p-6 flex flex-col">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <Video className="w-6 h-6 text-white" />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
+              <Video className="w-6 h-6 text-white" />
+            </div>
+            <span className="font-semibold text-lg">EasyRek</span>
           </div>
-          <span className="font-semibold text-lg">Rafael's workspace</span>
+          <UserButton />
         </div>
 
         <Link
@@ -217,14 +302,17 @@ export function HomePage() {
           Record
         </Link>
 
-        <button className="w-full border border-gray-300 hover:bg-gray-50 text-gray-700 py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 mb-8 transition-colors">
+        <button
+          onClick={() => setIsUploadModalOpen(true)}
+          className="w-full border border-gray-300 hover:bg-gray-50 text-gray-700 py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 mb-8 transition-colors"
+        >
           <Upload className="w-5 h-5" />
           Upload
         </button>
 
         <nav className="flex-1">
           <Link
-            href="#"
+            href="/home"
             className="flex items-center justify-between px-3 py-2 text-indigo-600 bg-indigo-50 rounded-lg mb-1 font-medium"
           >
             <div className="flex items-center gap-3">
@@ -236,28 +324,20 @@ export function HomePage() {
             </span>
           </Link>
 
-          <div className="mt-6">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 mb-2">
-              Playlists
-            </h3>
-            <Link
-              href="#"
-              className="flex items-center justify-between px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg mb-1"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">🚀</span>
-                <span>Getting started</span>
-              </div>
-              <span className="text-sm text-gray-400">2</span>
-            </Link>
-            <Link
-              href="#"
-              className="flex items-center gap-3 px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg"
-            >
-              <span className="text-lg">🗑️</span>
-              <span>Trash</span>
-            </Link>
-          </div>
+          <PlaylistSidebar
+            selectedPlaylistId={selectedPlaylistId}
+            onPlaylistSelect={setSelectedPlaylistId}
+            onCreatePlaylist={() => {
+              setPlaylistModalMode("create");
+              setIsPlaylistModalOpen(true);
+            }}
+            onDeletePlaylist={() => {
+              // Optional: refresh or do something after deletion
+            }}
+            refreshPlaylists={() => {
+              // This will be called when a playlist is created or deleted
+            }}
+          />
         </nav>
 
         <div className="border-t border-gray-200 pt-4">
@@ -278,47 +358,73 @@ export function HomePage() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-7xl mx-auto p-8">
-          {/* Search Bar */}
-          <div className="relative mb-8">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search videos..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full max-w-md pl-12 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
-          </div>
+          {!selectedPlaylistId && (
+            <>
+              {/* Search Bar */}
+              <div className="relative mb-8">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search videos..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full max-w-md pl-12 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
 
-          {/* Tools Section */}
-          <section className="mb-12">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Tools</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {tools.map((tool) => (
-                <button
-                  key={tool.name}
-                  className={`${tool.color} border border-gray-200 rounded-xl p-5 text-left hover:shadow-md transition-all group`}
-                >
-                  <div className="text-3xl mb-3">{tool.icon}</div>
-                  <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-indigo-600 transition-colors">
-                    {tool.name}
-                  </h3>
-                  <p className="text-sm text-gray-500">{tool.description}</p>
-                </button>
-              ))}
-            </div>
-          </section>
+              {/* Tools Section */}
+              <section className="mb-12">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Tools</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {tools.map((tool) => (
+                    <button
+                      key={tool.name}
+                      className={`${tool.color} border border-gray-200 rounded-xl p-5 text-left hover:shadow-md transition-all group`}
+                    >
+                      <div className="text-3xl mb-3">{tool.icon}</div>
+                      <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-indigo-600 transition-colors">
+                        {tool.name}
+                      </h3>
+                      <p className="text-sm text-gray-500">{tool.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
 
           {/* My Videos Section */}
           <section>
             <div className="flex items-center gap-3 mb-6">
-              <h2 className="text-xl font-bold text-gray-900">My videos</h2>
-              <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-sm font-medium">
-                {filteredVideos.length}
-              </span>
+              <h2 className="text-xl font-bold text-gray-900">
+                {selectedPlaylistId ? "Playlist" : "My videos"}
+              </h2>
+              {selectedPlaylistId && (
+                <button
+                  onClick={() => setSelectedPlaylistId(null)}
+                  className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  Back to all videos
+                </button>
+              )}
+              {!selectedPlaylistId && (
+                <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-sm font-medium">
+                  {filteredVideos.length}
+                </span>
+              )}
             </div>
 
-            {loading ? (
+            {selectedPlaylistId ? (
+              <PlaylistItems
+                playlistId={selectedPlaylistId}
+                onClose={() => setSelectedPlaylistId(null)}
+                onItemsChanged={() => {
+                  // Refresh playlist items when they change
+                  // This will trigger a re-fetch in PlaylistItems
+                }}
+                refreshTrigger={playlistRefreshTrigger}
+              />
+            ) : loading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="text-center">
                   <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
@@ -407,7 +513,9 @@ export function HomePage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          alert("Add to playlist functionality coming soon!");
+                          setSelectedRecordingId(video.id);
+                          setPlaylistModalMode("add");
+                          setIsPlaylistModalOpen(true);
                         }}
                         className="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm transition-colors"
                         title="Add to playlist"
@@ -437,9 +545,9 @@ export function HomePage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setOpenMenuId(null);
-                                alert(
-                                  "Manage playlists functionality coming soon!",
-                                );
+                                setSelectedRecordingId(video.id);
+                                setPlaylistModalMode("add");
+                                setIsPlaylistModalOpen(true);
                               }}
                               className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
                             >
@@ -483,10 +591,45 @@ export function HomePage() {
                         )}
                       </div>
                     </div>
-
-                    <h3 className="font-medium text-gray-900 truncate group-hover:text-indigo-600 transition-colors">
-                      {video.title}
-                    </h3>
+ 
+                    <div className="flex items-center gap-2 group">
+                      {editingTitleId === video.id ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editTitleValue}
+                            onChange={(e) => setEditTitleValue(e.target.value)}
+                            onBlur={() => handleTitleSave(video.id)}
+                            onKeyDown={(e) => handleTitleKeyDown(e, video.id)}
+                            className="flex-1 text-sm font-medium text-gray-900 bg-transparent border-b-2 border-indigo-500 focus:outline-none px-1 py-0.5"
+                            autoFocus
+                          />
+                          {isSavingTitle && (
+                            <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
+                          )}
+                          <button
+                            onClick={handleTitleCancel}
+                            className="p-1 hover:bg-gray-100 rounded"
+                          >
+                            <X className="w-4 h-4 text-gray-500" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <h3 className="font-medium text-gray-900 truncate group-hover:text-indigo-600 transition-colors flex-1">
+                            {video.title}
+                          </h3>
+                          <button
+                            onClick={() =>
+                              handleTitleEditStart(video.id, video.title)
+                            }
+                            className="p-1 hover:bg-gray-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Pencil className="w-4 h-4 text-gray-500" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500">
                       Edited {video.edited}
                     </p>
@@ -502,6 +645,37 @@ export function HomePage() {
       <button className="fixed bottom-6 right-6 w-12 h-12 bg-white border-2 border-gray-300 rounded-full shadow-lg hover:shadow-xl transition-shadow flex items-center justify-center text-gray-600 hover:text-indigo-600 font-semibold text-lg">
         ?
       </button>
+
+      {/* Upload Modal */}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUploadSuccess={loadRecordings}
+      />
+
+      {/* Playlist Modal */}
+      {(selectedRecordingId || playlistModalMode === "create") && (
+        <PlaylistModal
+          isOpen={isPlaylistModalOpen}
+          onClose={() => {
+            setIsPlaylistModalOpen(false);
+            setSelectedRecordingId(null);
+          }}
+          mode={playlistModalMode}
+          recordingId={selectedRecordingId || undefined}
+          currentlySelectedPlaylistId={selectedPlaylistId}
+          onAddSuccess={() => {
+            // Refresh playlist items if viewing a playlist
+            if (selectedPlaylistId) {
+              setPlaylistRefreshTrigger((prev) => prev + 1);
+            }
+          }}
+          onCreateSuccess={() => {
+            // Refresh the page to show the new playlist in sidebar
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }
