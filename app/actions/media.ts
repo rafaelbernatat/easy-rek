@@ -7,9 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Client, R2_BUCKET_NAME } from "@/lib/r2";
-
-// Temporary demo user ID - Replace with actual auth in production
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000000";
+import { getOrCreateUser } from "./users";
 
 /**
  * Generate a presigned URL for uploading to R2
@@ -65,26 +63,18 @@ export async function uploadVideoAction({
       throw new Error("Invalid file object provided");
     }
 
+    const userId = await getOrCreateUser();
+    console.log("📤 [UPLOAD VIDEO] Usuário autenticado:", userId);
+
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) throw new Error("DATABASE_URL not set");
-    const sql = neon(dbUrl);
 
-    // Ensure demo user exists
-    const existingUsers = await sql`
-      SELECT * FROM users WHERE id = ${DEMO_USER_ID}
-    `;
-    if (existingUsers.length === 0) {
-      await sql`
-        INSERT INTO users (id, email, name, plan_type)
-        VALUES (${DEMO_USER_ID}, 'demo@easyrek.com', 'Demo User', 'free')
-      `;
-    }
+    const sql = neon(dbUrl);
 
     // Generate unique key for R2
     const timestamp = Date.now();
     const fileExtension = file.name.split(".").pop();
-    const videoKey = `uploads/${DEMO_USER_ID}/${timestamp}-${file.name}`;
-
+    const videoKey = `uploads/${userId}/${timestamp}-${file.name}`;
     console.log("📤 [UPLOAD VIDEO] Gerando presigned URL...");
     const { uploadUrl, key } = await generatePresignedUploadUrl(
       videoKey,
@@ -110,7 +100,7 @@ export async function uploadVideoAction({
 
     // Generate thumbnail (placeholder - will be generated asynchronously)
     console.log("📤 [UPLOAD VIDEO] Gerando thumbnail...");
-    const thumbnailKey = `thumbnails/${DEMO_USER_ID}/${timestamp}.jpg`;
+    const thumbnailKey = `thumbnails/${userId}/${timestamp}.jpg`;
 
     // Estimate video duration
     const duration = estimateVideoDuration(file.size);
@@ -133,7 +123,7 @@ export async function uploadVideoAction({
 
     const newRecordings = await sql`
       INSERT INTO recordings (user_id, title, video_key, thumbnail_key, thumbnail_url, duration, size)
-      VALUES (${DEMO_USER_ID}, ${title}, ${key}, ${thumbnailKey}, ${thumbnailUrl}, ${duration}, ${file.size})
+      VALUES (${userId}, ${title}, ${key}, ${thumbnailKey}, ${thumbnailUrl}, ${duration}, ${file.size})
       RETURNING *
     `;
 

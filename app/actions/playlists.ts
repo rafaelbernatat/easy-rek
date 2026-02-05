@@ -1,30 +1,7 @@
 "use server";
 
 import { neon } from "@neondatabase/serverless";
-
-// Temporary demo user ID - Replace with actual auth in Phase 5
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000000";
-
-/**
- * Ensure demo user exists
- */
-async function ensureDemoUser() {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) throw new Error("DATABASE_URL not set");
-
-  const sql = neon(dbUrl);
-
-  const existingUsers = await sql`
-    SELECT * FROM users WHERE id = ${DEMO_USER_ID}
-  `;
-
-  if (existingUsers.length === 0) {
-    await sql`
-      INSERT INTO users (id, email, name, plan_type)
-      VALUES (${DEMO_USER_ID}, 'demo@easyrek.com', 'Demo User', 'free')
-    `;
-  }
-}
+import { getOrCreateUser } from "./users";
 
 export interface CreatePlaylistInput {
   name: string;
@@ -38,7 +15,8 @@ export async function createPlaylistAction(input: CreatePlaylistInput) {
   console.log("📋 [CREATE PLAYLIST] Input recebido:", input);
 
   try {
-    await ensureDemoUser();
+    const userId = await getOrCreateUser();
+    console.log("📋 [CREATE PLAYLIST] Usuário autenticado:", userId);
 
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) throw new Error("DATABASE_URL not set");
@@ -47,7 +25,7 @@ export async function createPlaylistAction(input: CreatePlaylistInput) {
 
     const newPlaylists = await sql`
       INSERT INTO playlists (user_id, name)
-      VALUES (${DEMO_USER_ID}, ${input.name})
+      VALUES (${userId}, ${input.name})
       RETURNING *
     `;
 
@@ -79,7 +57,8 @@ export async function createPlaylistAction(input: CreatePlaylistInput) {
  */
 export async function getPlaylistsAction() {
   try {
-    await ensureDemoUser();
+    const userId = await getOrCreateUser();
+    console.log("📋 [GET PLAYLISTS] Usuário autenticado:", userId);
 
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) throw new Error("DATABASE_URL not set");
@@ -96,7 +75,7 @@ export async function getPlaylistsAction() {
         COALESCE(COUNT(pi.id), 0) as video_count
       FROM playlists p
       LEFT JOIN playlist_items pi ON p.id = pi.playlist_id
-      WHERE p.user_id = ${DEMO_USER_ID}
+      WHERE p.user_id = ${userId}
       GROUP BY p.id, p.user_id, p.name, p.created_at, p.updated_at
       ORDER BY p.created_at DESC
     `;
@@ -130,6 +109,9 @@ export async function deletePlaylistAction(playlistId: string) {
   console.log("🗑️ [DELETE PLAYLIST] Iniciando exclusão:", playlistId);
 
   try {
+    const userId = await getOrCreateUser();
+    console.log("🗑️ [DELETE PLAYLIST] Usuário autenticado:", userId);
+
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) throw new Error("DATABASE_URL not set");
 
@@ -137,7 +119,7 @@ export async function deletePlaylistAction(playlistId: string) {
 
     // Verify playlist belongs to user
     const playlists = await sql`
-      SELECT * FROM playlists WHERE id = ${playlistId} AND user_id = ${DEMO_USER_ID}
+      SELECT * FROM playlists WHERE id = ${playlistId} AND user_id = ${userId}
     `;
 
     if (playlists.length === 0) {
@@ -149,7 +131,7 @@ export async function deletePlaylistAction(playlistId: string) {
 
     // Delete playlist (cascade will delete playlist_items)
     await sql`
-      DELETE FROM playlists WHERE id = ${playlistId} AND user_id = ${DEMO_USER_ID}
+      DELETE FROM playlists WHERE id = ${playlistId} AND user_id = ${userId}
     `;
 
     console.log("🗑️ [DELETE PLAYLIST] ✅ Playlist deletada");
@@ -504,6 +486,9 @@ export async function getPlaylistsForRecordingAction(recordingId: string) {
   console.log("🎬 [GET PLAYLISTS FOR RECORDING] RecordingId:", recordingId);
 
   try {
+    const userId = await getOrCreateUser();
+    console.log("🎬 [GET PLAYLISTS FOR RECORDING] Usuário autenticado:", userId);
+
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) throw new Error("DATABASE_URL not set");
 
@@ -513,7 +498,7 @@ export async function getPlaylistsForRecordingAction(recordingId: string) {
       SELECT DISTINCT p.id, p.user_id, p.name, p.created_at, p.updated_at
       FROM playlists p
       JOIN playlist_items pi ON p.id = pi.playlist_id
-      WHERE pi.recording_id = ${recordingId} AND p.user_id = ${DEMO_USER_ID}
+      WHERE pi.recording_id = ${recordingId} AND p.user_id = ${userId}
       ORDER BY p.created_at DESC
     `;
 

@@ -12,9 +12,7 @@ const isProtectedRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware((auth, req) => {
-  if (isProtectedRoute(req)) {
-    auth.protect();
-  }
-
+  // Allow all requests to pass through, auth will be checked in individual routes
+  // This ensures auth cookies are available to API routes
   return NextResponse.next();
 });

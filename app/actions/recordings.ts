@@ -1,30 +1,7 @@
 "use server";
 
 import { neon } from "@neondatabase/serverless";
-
-// Temporary demo user ID - Replace with actual auth in Phase 5
-const DEMO_USER_ID = "00000000-0000-0000-0000-000000000000";
-
-/**
- * Ensure demo user exists
- */
-async function ensureDemoUser() {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) throw new Error("DATABASE_URL not set");
-
-  const sql = neon(dbUrl);
-
-  const existingUsers = await sql`
-    SELECT * FROM users WHERE id = ${DEMO_USER_ID}
-  `;
-
-  if (existingUsers.length === 0) {
-    await sql`
-      INSERT INTO users (id, email, name, plan_type)
-      VALUES (${DEMO_USER_ID}, 'demo@easyrek.com', 'Demo User', 'free')
-    `;
-  }
-}
+import { getOrCreateUser } from "./users";
 
 export interface SaveRecordingInput {
   title: string;
@@ -56,10 +33,10 @@ export async function saveRecordingAction(input: SaveRecordingInput) {
   });
 
   try {
-    // Ensure demo user exists
-    console.log("💾 [SAVE RECORDING] Garantindo usuário demo...");
-    await ensureDemoUser();
-    console.log("💾 [SAVE RECORDING] ✅ Usuário demo OK");
+    // Get authenticated user
+    console.log("💾 [SAVE RECORDING] Obtendo usuário autenticado...");
+    const userId = await getOrCreateUser();
+    console.log("💾 [SAVE RECORDING] ✅ Usuário autenticado:", userId);
 
     // Create recording
     console.log("💾 [SAVE RECORDING] Criando registro no banco...");
@@ -75,7 +52,7 @@ export async function saveRecordingAction(input: SaveRecordingInput) {
 
     const newRecordings = await sql`
       INSERT INTO recordings (user_id, title, video_key, camera_key, screen_key, thumbnail_key, thumbnail_url, duration, size)
-      VALUES (${DEMO_USER_ID}, ${input.title}, ${input.videoKey}, ${input.cameraKey || null}, ${input.screenKey || null}, ${input.thumbnailKey}, ${thumbnailUrl}, ${input.duration}, ${input.size})
+      VALUES (${userId}, ${input.title}, ${input.videoKey}, ${input.cameraKey || null}, ${input.screenKey || null}, ${input.thumbnailKey}, ${thumbnailUrl}, ${input.duration}, ${input.size})
       RETURNING *
     `;
 
@@ -116,7 +93,8 @@ export async function saveRecordingAction(input: SaveRecordingInput) {
  */
 export async function getRecordingsAction() {
   try {
-    await ensureDemoUser();
+    const userId = await getOrCreateUser();
+    console.log("📥 [GET RECORDINGS] Usuário autenticado:", userId);
 
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) throw new Error("DATABASE_URL not set");
@@ -124,8 +102,8 @@ export async function getRecordingsAction() {
     const sql = neon(dbUrl);
 
     const recordings = await sql`
-      SELECT * FROM recordings 
-      WHERE user_id = ${DEMO_USER_ID}
+      SELECT * FROM recordings
+      WHERE user_id = ${userId}
       ORDER BY created_at DESC
     `;
 
@@ -225,6 +203,9 @@ export async function deleteRecordingAction(id: string) {
   console.log("🗑️ [DELETE RECORDING] Iniciando exclusão:", id);
 
   try {
+    const userId = await getOrCreateUser();
+    console.log("🗑️ [DELETE RECORDING] Usuário autenticado:", userId);
+
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) throw new Error("DATABASE_URL not set");
 
@@ -232,7 +213,7 @@ export async function deleteRecordingAction(id: string) {
 
     // Get recording to retrieve video key for R2 deletion
     const recordings = await sql`
-      SELECT * FROM recordings WHERE id = ${id} AND user_id = ${DEMO_USER_ID}
+      SELECT * FROM recordings WHERE id = ${id} AND user_id = ${userId}
     `;
 
     if (recordings.length === 0) {
@@ -288,7 +269,7 @@ export async function deleteRecordingAction(id: string) {
 
     // Delete from database
     await sql`
-      DELETE FROM recordings WHERE id = ${id} AND user_id = ${DEMO_USER_ID}
+      DELETE FROM recordings WHERE id = ${id} AND user_id = ${userId}
     `;
 
     console.log("🗑️ [DELETE RECORDING] ✅ Deletado do banco");
@@ -314,6 +295,9 @@ export async function updateTitleAction(recordingId: string, title: string) {
   console.log("✏️ [UPDATE TITLE] Novo título:", title);
 
   try {
+    const userId = await getOrCreateUser();
+    console.log("✏️ [UPDATE TITLE] Usuário autenticado:", userId);
+
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) throw new Error("DATABASE_URL not set");
 
@@ -322,7 +306,7 @@ export async function updateTitleAction(recordingId: string, title: string) {
     const result = await sql`
       UPDATE recordings
       SET title = ${title}, updated_at = NOW()
-      WHERE id = ${recordingId} AND user_id = ${DEMO_USER_ID}
+      WHERE id = ${recordingId} AND user_id = ${userId}
       RETURNING id, title, updated_at
     `;
 

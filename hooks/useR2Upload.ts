@@ -49,22 +49,30 @@ export function useR2Upload() {
         "🚀 [R2 UPLOAD] Etapa 1: Solicitando presigned URL para vídeo...",
       );
       setUploadProgress(10);
-      const response = await fetch("/api/upload", {
+      const response = await fetch("/api/upload/presigned", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({
           fileName,
           contentType: blob.type,
+          fileType: "video",
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to get upload URL");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to get upload URL");
       }
 
-      const { uploadUrl, key } = await response.json();
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to get upload URL");
+      }
+
+      const { uploadUrl, key } = data;
       console.log("🚀 [R2 UPLOAD] ✅ Presigned URL obtida");
       console.log("🚀 [R2 UPLOAD] Video key:", key);
       setUploadProgress(15);
@@ -74,14 +82,16 @@ export function useR2Upload() {
       if (thumbnailBlob) {
         console.log("🚀 [R2 UPLOAD] Etapa 2a: Fazendo upload da thumbnail...");
         const thumbnailFileName = `thumb-${Date.now()}.jpg`;
-        const thumbResponse = await fetch("/api/upload", {
+        const thumbResponse = await fetch("/api/upload/presigned", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify({
             fileName: thumbnailFileName,
             contentType: "image/jpeg",
+            fileType: "thumbnail",
           }),
         });
 
@@ -90,23 +100,25 @@ export function useR2Upload() {
             "Failed to get thumbnail upload URL, continuing without thumbnail",
           );
         } else {
-          const { uploadUrl: thumbUploadUrl, key: thumbKey } =
-            await thumbResponse.json();
-          thumbnailKey = thumbKey;
+          const thumbData = await thumbResponse.json();
+          if (thumbData.success) {
+            const { uploadUrl: thumbUploadUrl, key: thumbKey } = thumbData;
+            thumbnailKey = thumbKey;
 
-          const thumbUpload = await fetch(thumbUploadUrl, {
-            method: "PUT",
-            body: thumbnailBlob,
-            headers: {
-              "Content-Type": "image/jpeg",
-            },
-          });
+            const thumbUpload = await fetch(thumbUploadUrl, {
+              method: "PUT",
+              body: thumbnailBlob,
+              headers: {
+                "Content-Type": "image/jpeg",
+              },
+            });
 
-          if (thumbUpload.ok) {
-            console.log("🚀 [R2 UPLOAD] ✅ Thumbnail enviada com sucesso");
-          } else {
-            console.warn("Failed to upload thumbnail, continuing without it");
-            thumbnailKey = undefined;
+            if (thumbUpload.ok) {
+              console.log("🚀 [R2 UPLOAD] ✅ Thumbnail enviada com sucesso");
+            } else {
+              console.warn("Failed to upload thumbnail, continuing without it");
+              thumbnailKey = undefined;
+            }
           }
         }
         setUploadProgress(35);
@@ -136,35 +148,39 @@ export function useR2Upload() {
           "🚀 [R2 UPLOAD] Etapa 3b: Fazendo upload da fonte da câmera...",
         );
         const cameraFileName = `camera-${Date.now()}.webm`;
-        const cameraResponse = await fetch("/api/upload", {
+        const cameraResponse = await fetch("/api/upload/presigned", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify({
             fileName: cameraFileName,
             contentType: cameraBlob.type,
+            fileType: "camera",
           }),
         });
 
         if (cameraResponse.ok) {
-          const { uploadUrl: cameraUploadUrl, key: camKey } =
-            await cameraResponse.json();
-          cameraKey = camKey;
+          const cameraData = await cameraResponse.json();
+          if (cameraData.success) {
+            const { uploadUrl: cameraUploadUrl, key: camKey } = cameraData;
+            cameraKey = camKey;
 
-          const camUpload = await fetch(cameraUploadUrl, {
-            method: "PUT",
-            body: cameraBlob,
-            headers: {
-              "Content-Type": cameraBlob.type,
-            },
-          });
+            const camUpload = await fetch(cameraUploadUrl, {
+              method: "PUT",
+              body: cameraBlob,
+              headers: {
+                "Content-Type": cameraBlob.type,
+              },
+            });
 
-          if (camUpload.ok) {
-            console.log("🚀 [R2 UPLOAD] ✅ Fonte da câmera enviada");
-          } else {
-            console.warn("Failed to upload camera source");
-            cameraKey = undefined;
+            if (camUpload.ok) {
+              console.log("🚀 [R2 UPLOAD] ✅ Fonte da câmera enviada");
+            } else {
+              console.warn("Failed to upload camera source");
+              cameraKey = undefined;
+            }
           }
         }
         setUploadProgress(60);
@@ -177,35 +193,39 @@ export function useR2Upload() {
           "🚀 [R2 UPLOAD] Etapa 3c: Fazendo upload da fonte da tela...",
         );
         const screenFileName = `screen-${Date.now()}.webm`;
-        const screenResponse = await fetch("/api/upload", {
+        const screenResponse = await fetch("/api/upload/presigned", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify({
             fileName: screenFileName,
             contentType: screenBlob.type,
+            fileType: "screen",
           }),
         });
 
         if (screenResponse.ok) {
-          const { uploadUrl: screenUploadUrl, key: scrKey } =
-            await screenResponse.json();
-          screenKey = scrKey;
+          const screenData = await screenResponse.json();
+          if (screenData.success) {
+            const { uploadUrl: screenUploadUrl, key: scrKey } = screenData;
+            screenKey = scrKey;
 
-          const scrUpload = await fetch(screenUploadUrl, {
-            method: "PUT",
-            body: screenBlob,
-            headers: {
-              "Content-Type": screenBlob.type,
-            },
-          });
+            const scrUpload = await fetch(screenUploadUrl, {
+              method: "PUT",
+              body: screenBlob,
+              headers: {
+                "Content-Type": screenBlob.type,
+              },
+            });
 
-          if (scrUpload.ok) {
-            console.log("🚀 [R2 UPLOAD] ✅ Fonte da tela enviada");
-          } else {
-            console.warn("Failed to upload screen source");
-            screenKey = undefined;
+            if (scrUpload.ok) {
+              console.log("🚀 [R2 UPLOAD] ✅ Fonte da tela enviada");
+            } else {
+              console.warn("Failed to upload screen source");
+              screenKey = undefined;
+            }
           }
         }
         setUploadProgress(70);
