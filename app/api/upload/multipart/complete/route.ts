@@ -63,9 +63,8 @@ export async function POST(request: Request) {
       }
 
       // Fire-and-forget: trigger transcoding
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000";
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
       fetch(`${baseUrl}/api/transcode/trigger`, {
         method: "POST",
@@ -83,7 +82,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, location });
   } catch (error) {
-    console.error("[MULTIPART COMPLETE] Error:", error);
-    return NextResponse.json({ error: "Failed to complete multipart upload" }, { status: 500 });
+    const details = error instanceof Error ? error.message : String(error);
+    console.error("[MULTIPART COMPLETE] Error:", details);
+    return NextResponse.json({ error: "Failed to complete multipart upload", details }, { status: 500 });
   }
 }

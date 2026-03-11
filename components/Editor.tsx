@@ -11,6 +11,8 @@ import {
   BorderType,
   ShadowStyle,
   BackgroundStyle,
+  ExportResolution,
+  RESOLUTION_MAP,
 } from "@/types";
 import { Stage } from "@/components/Stage";
 import { Sidebar } from "@/components/Sidebar";
@@ -45,6 +47,7 @@ import {
 import { clsx } from "clsx";
 import { saveVideo } from "@/lib/videoStorage";
 import { updateEditConfigAction } from "@/app/actions/recordings";
+import { convertToMp4 } from "@/lib/mp4Encoder";
 
 interface EditorProps {
   recordings: RecordedFiles;
@@ -282,6 +285,11 @@ export const Editor: React.FC<EditorProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStatus, setExportStatus] = useState("Initializing...");
+  const [selectedExportResolution, setSelectedExportResolution] = useState<ExportResolution>('1080p');
+  const [mp4ConvertProgress, setMp4ConvertProgress] = useState(0);
+  const [mp4ConvertStatus, setMp4ConvertStatus] = useState('');
+  const [isConvertingScreenMp4, setIsConvertingScreenMp4] = useState(false);
+  const [isConvertingCameraMp4, setIsConvertingCameraMp4] = useState(false);
   const [timelineHeight, setTimelineHeight] = useState(180);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -902,9 +910,12 @@ export const Editor: React.FC<EditorProps> = ({
       setIsPlaying(false);
       const masterAudioBuffer = await renderMasterAudio();
       setExportStatus("Preloading Assets...");
+      const resInfo = RESOLUTION_MAP[selectedExportResolution];
+      const EXPORT_W = resInfo.width;
+      const EXPORT_H = resInfo.height;
       const canvas = document.createElement("canvas");
-      canvas.width = 1920;
-      canvas.height = 1080;
+      canvas.width = EXPORT_W;
+      canvas.height = EXPORT_H;
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Could not create canvas");
       const loadedImages = new Map<string, HTMLImageElement>();
@@ -946,11 +957,24 @@ export const Editor: React.FC<EditorProps> = ({
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.push(e.data);
       };
-      recorder.onstop = () => {
-        downloadBlob(
-          new Blob(chunks, { type: "video/webm" }),
-          `${metadata.name || "edited-video"}.webm`,
-        );
+      recorder.onstop = async () => {
+        const webmBlob = new Blob(chunks, { type: "video/webm" });
+        try {
+          setExportStatus("Converting to MP4...");
+          const mp4Blob = await convertToMp4(webmBlob, {
+            width: EXPORT_W,
+            height: EXPORT_H,
+            onProgress: (ratio) => setExportProgress(0.8 + ratio * 0.2),
+            onStatus: (msg) => setExportStatus(`Converting: ${msg}`),
+          });
+          downloadBlob(
+            mp4Blob,
+            `${metadata.name || "edited-video"}.mp4`,
+          );
+        } catch (err) {
+          console.error("MP4 conversion failed, falling back to WebM:", err);
+          downloadBlob(webmBlob, `${metadata.name || "edited-video"}.webm`);
+        }
         setIsExporting(false);
         setShowExportModal(false);
         playCtx.close();
@@ -1001,10 +1025,10 @@ export const Editor: React.FC<EditorProps> = ({
           if (!clipMode) {
             if (layout.background === BackgroundStyle.SOLID_DARK) {
               context.fillStyle = "#0f172a";
-              context.fillRect(0, 0, 1920, 1080);
+              context.fillRect(0, 0, EXPORT_W, EXPORT_H);
             } else if (layout.background === BackgroundStyle.BLURRED) {
               context.fillStyle = "#e2e8f0";
-              context.fillRect(0, 0, 1920, 1080);
+              context.fillRect(0, 0, EXPORT_W, EXPORT_H);
             } else if (
               layout.background === BackgroundStyle.IMAGE &&
               layout.backgroundImage
@@ -1012,25 +1036,25 @@ export const Editor: React.FC<EditorProps> = ({
               const img = loadedImages.get(layout.backgroundImage);
               if (img) {
                 const imgRatio = img.width / img.height,
-                  canvasRatio = 1920 / 1080;
-                let dw = 1920,
-                  dh = 1080,
+                  canvasRatio = EXPORT_W / EXPORT_H;
+                let dw = EXPORT_W,
+                  dh = EXPORT_H,
                   ox = 0,
                   oy = 0;
                 if (imgRatio > canvasRatio) {
-                  dw = 1080 * imgRatio;
-                  ox = (1920 - dw) / 2;
+                  dw = EXPORT_H * imgRatio;
+                  ox = (EXPORT_W - dw) / 2;
                 } else {
-                  dh = 1920 / imgRatio;
-                  oy = (1080 - dh) / 2;
+                  dh = EXPORT_W / imgRatio;
+                  oy = (EXPORT_H - dh) / 2;
                 }
                 context.drawImage(img, ox, oy, dw, dh);
               } else {
                 context.fillStyle = "#0f172a";
-                context.fillRect(0, 0, 1920, 1080);
+                context.fillRect(0, 0, EXPORT_W, EXPORT_H);
               }
             } else {
-              const g = context.createLinearGradient(0, 0, 1920, 1080);
+              const g = context.createLinearGradient(0, 0, EXPORT_W, EXPORT_H);
               if (layout.background === BackgroundStyle.GRADIENT_1) {
                 g.addColorStop(0, "#e0e7ff");
                 g.addColorStop(1, "#fce7f3");
@@ -1039,12 +1063,12 @@ export const Editor: React.FC<EditorProps> = ({
                 g.addColorStop(1, "#cffafe");
               }
               context.fillStyle = g;
-              context.fillRect(0, 0, 1920, 1080);
+              context.fillRect(0, 0, EXPORT_W, EXPORT_H);
             }
           }
           context.save();
-          const zx = zoom.x * 1920,
-            zy = zoom.y * 1080;
+          const zx = zoom.x * EXPORT_W,
+            zy = zoom.y * EXPORT_H;
           context.translate(zx, zy);
           context.scale(zoom.scale, zoom.scale);
           context.translate(-zx, -zy);
@@ -1093,7 +1117,7 @@ export const Editor: React.FC<EditorProps> = ({
           y: 0.5,
         };
         ctx.fillStyle = "#0f172a";
-        ctx.fillRect(0, 0, 1920, 1080);
+        ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
         if (activeClip) {
           drawScene(ctx, currentLayout, currentZoom, false);
           for (const blurAction of activeBlurs) {
@@ -1101,7 +1125,7 @@ export const Editor: React.FC<EditorProps> = ({
             const { x, y, width, height, intensity } = blurAction.blurConfig;
             ctx.save();
             ctx.beginPath();
-            ctx.rect(x * 1920, y * 1080, width * 1920, height * 1080);
+            ctx.rect(x * EXPORT_W, y * EXPORT_H, width * EXPORT_W, height * EXPORT_H);
             ctx.clip();
             ctx.filter = `blur(${intensity}px)`;
             drawScene(ctx, currentLayout, currentZoom, true);
@@ -1129,10 +1153,12 @@ export const Editor: React.FC<EditorProps> = ({
     shadowColor: string | undefined,
     shape?: CameraShape,
   ) => {
-    const x = xPct * 1920,
-      y = yPct * 1080,
-      w = wPct * 1920,
-      h = hPct * 1080;
+    const canvasW = ctx.canvas.width;
+    const canvasH = ctx.canvas.height;
+    const x = xPct * canvasW,
+      y = yPct * canvasH,
+      w = wPct * canvasW,
+      h = hPct * canvasH;
     ctx.save();
     if (shadow !== "NONE") {
       ctx.shadowColor = shadowColor || "rgba(0,0,0,0.5)";
@@ -1674,18 +1700,24 @@ export const Editor: React.FC<EditorProps> = ({
                   {exportStatus}
                 </h3>
                 <p className="text-slate-500 text-sm">
-                  Applying edits, mixing audio, and encoding.
+                  Applying edits, mixing audio, and encoding to MP4.
                 </p>
+                <div className="w-full max-w-xs bg-indigo-100 rounded-full h-2">
+                  <div
+                    className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.round(exportProgress * 100)}%` }}
+                  />
+                </div>
               </div>
             ) : (
               <>
                 <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                   <div>
                     <h2 className="text-xl font-bold text-slate-900">
-                      Export Video
+                      Export Video as MP4
                     </h2>
                     <p className="text-sm text-slate-500">
-                      Choose your format.
+                      Choose resolution and export.
                     </p>
                   </div>
                   <button
@@ -1696,6 +1728,47 @@ export const Editor: React.FC<EditorProps> = ({
                   </button>
                 </div>
                 <div className="p-8 space-y-6">
+                  {/* Resolution Selector */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                      Export Resolution
+                    </p>
+                    <div className="flex gap-2">
+                      {(['720p', '1080p', '4k'] as ExportResolution[]).map((res) => {
+                        const info = RESOLUTION_MAP[res];
+                        const isSelected = selectedExportResolution === res;
+                        return (
+                          <button
+                            key={res}
+                            onClick={() => setSelectedExportResolution(res)}
+                            className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all border-2 relative ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                            }`}
+                          >
+                            <div>{info.label}</div>
+                            <div className={`text-[10px] mt-0.5 ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                              {info.width}×{info.height}
+                            </div>
+                            {info.badge && (
+                              <span
+                                className={`absolute -top-2 -right-2 text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                                  info.badge === 'Recomendado'
+                                    ? 'bg-green-500 text-white'
+                                    : 'bg-amber-500 text-white'
+                                }`}
+                              >
+                                {info.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Render Edited Video */}
                   <div className="p-6 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-indigo-500 text-white flex items-center justify-center shadow-lg shadow-indigo-200">
@@ -1703,7 +1776,7 @@ export const Editor: React.FC<EditorProps> = ({
                       </div>
                       <div>
                         <h3 className="font-bold text-slate-900">
-                          Render Edited Video
+                          Render Edited Video (MP4)
                         </h3>
                         <p className="text-sm text-slate-500">
                           Combines edits, zooms, audio and layouts.
@@ -1714,9 +1787,135 @@ export const Editor: React.FC<EditorProps> = ({
                       onClick={handleExportRender}
                       className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-md active:translate-y-0.5"
                     >
-                      Export Video
+                      Export MP4
                     </button>
                   </div>
+
+                  {/* Separator */}
+                  <div className="my-2 border-t border-slate-100 relative">
+                    <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      OR Download Raw Tracks
+                    </span>
+                  </div>
+
+                  {/* Screen MP4 Download */}
+                  {recordings.screen && (
+                    <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
+                          <Monitor size={20} />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-slate-900">Screen Recording (MP4)</h3>
+                          <p className="text-sm text-slate-500">
+                            {(recordings.screen.size / 1024 / 1024).toFixed(2)} MB · With system audio
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (isConvertingScreenMp4 || isConvertingCameraMp4) return;
+                          setIsConvertingScreenMp4(true);
+                          setMp4ConvertProgress(0);
+                          setMp4ConvertStatus('Initializing...');
+                          try {
+                            const res = RESOLUTION_MAP[selectedExportResolution];
+                            const mp4 = await convertToMp4(recordings.screen!, {
+                              width: res.width,
+                              height: res.height,
+                              onProgress: (r) => setMp4ConvertProgress(r),
+                              onStatus: (m) => setMp4ConvertStatus(m),
+                            });
+                            downloadBlob(mp4, 'screen-recording.mp4');
+                          } catch (err) {
+                            console.error('Screen MP4 conversion failed:', err);
+                            downloadBlob(recordings.screen!, 'screen-recording.webm');
+                          } finally {
+                            setIsConvertingScreenMp4(false);
+                          }
+                        }}
+                        disabled={isConvertingScreenMp4 || isConvertingCameraMp4}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-sm disabled:opacity-50"
+                      >
+                        {isConvertingScreenMp4 ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Download size={16} />
+                        )}
+                        .mp4
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Camera MP4 Download */}
+                  {recordings.camera && (
+                    <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-pink-100 text-pink-600 flex items-center justify-center">
+                          <Video size={20} />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-slate-900">Camera Recording (MP4)</h3>
+                          <p className="text-sm text-slate-500">
+                            {(recordings.camera.size / 1024 / 1024).toFixed(2)} MB · With microphone audio
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (isConvertingScreenMp4 || isConvertingCameraMp4) return;
+                          setIsConvertingCameraMp4(true);
+                          setMp4ConvertProgress(0);
+                          setMp4ConvertStatus('Initializing...');
+                          try {
+                            const res = RESOLUTION_MAP[selectedExportResolution];
+                            const mp4 = await convertToMp4(recordings.camera!, {
+                              width: res.width,
+                              height: res.height,
+                              onProgress: (r) => setMp4ConvertProgress(r),
+                              onStatus: (m) => setMp4ConvertStatus(m),
+                            });
+                            downloadBlob(mp4, 'camera-recording.mp4');
+                          } catch (err) {
+                            console.error('Camera MP4 conversion failed:', err);
+                            downloadBlob(recordings.camera!, 'camera-recording.webm');
+                          } finally {
+                            setIsConvertingCameraMp4(false);
+                          }
+                        }}
+                        disabled={isConvertingScreenMp4 || isConvertingCameraMp4}
+                        className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-lg font-medium hover:bg-pink-700 transition-colors text-sm disabled:opacity-50"
+                      >
+                        {isConvertingCameraMp4 ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Download size={16} />
+                        )}
+                        .mp4
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Conversion Progress (for raw track downloads) */}
+                  {(isConvertingScreenMp4 || isConvertingCameraMp4) && (
+                    <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200">
+                      <div className="flex items-center gap-3 mb-2">
+                        <Loader2 size={16} className="animate-spin text-indigo-600" />
+                        <span className="text-sm font-medium text-indigo-700">
+                          {mp4ConvertStatus}
+                        </span>
+                        <span className="ml-auto text-sm font-bold text-indigo-600">
+                          {Math.round(mp4ConvertProgress * 100)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-indigo-200 rounded-full h-2">
+                        <div
+                          className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.round(mp4ConvertProgress * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}

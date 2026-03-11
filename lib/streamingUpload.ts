@@ -154,7 +154,8 @@ export class StreamingUploader {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to complete multipart upload: ${response.statusText}`);
+      const body = await response.json().catch(() => ({}));
+      throw new Error(`Failed to complete multipart upload: ${body.details || body.error || response.status}`);
     }
 
     this.clearState();

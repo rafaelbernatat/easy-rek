@@ -99,3 +99,11 @@ export interface TimelineAction {
 export interface ProjectMetadata {
   name: string;
 }
+
+export type ExportResolution = '720p' | '1080p' | '4k';
+
+export const RESOLUTION_MAP: Record<ExportResolution, { width: number; height: number; label: string; badge?: string }> = {
+  '720p': { width: 1280, height: 720, label: '720p (HD)' },
+  '1080p': { width: 1920, height: 1080, label: '1080p (Full HD)', badge: 'Recomendado' },
+  '4k': { width: 3840, height: 2160, label: '4K (Ultra HD)', badge: 'Lento' },
+};
