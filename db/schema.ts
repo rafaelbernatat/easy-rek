@@ -35,6 +35,16 @@ export const recordings = pgTable("recordings", {
   editConfig: text("edit_config").default('{"cuts":[]}'), // JSON string para configuração de edição não-destrutiva
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at"), // Soft delete timestamp
+  // Streaming upload + transcoding fields
+  transcodeStatus: text("transcode_status"), // 'pending' | 'processing' | 'done' | 'failed' | null
+  transcodeError: text("transcode_error"),
+  mp4Key720p: text("mp4_key_720p"),
+  mp4Key1080p: text("mp4_key_1080p"),
+  mp4Key4k: text("mp4_key_4k"),
+  rawKey: text("raw_key"),             // R2 key do WebM original
+  uploadStatus: text("upload_status"), // 'uploading' | 'complete' | 'aborted'
+  uploadId: text("upload_id"),         // ID do multipart upload ativo no R2
 });
 
 // Subscriptions table
